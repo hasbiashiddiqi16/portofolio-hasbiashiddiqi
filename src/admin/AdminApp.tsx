@@ -102,7 +102,38 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
 }
 
 function SaveStatus() {
-  const { saveError, lastSaved, isDraftDifferent } = useContent();
+  const { saveError, lastSaved, isDraftDifferent, dynamicActive, publishStatus, publishError, lastPublishedAt } =
+    useContent();
+
+  if (dynamicActive) {
+    if (publishStatus === "syncing") {
+      return <span className="flex items-center gap-2 text-xs text-muted">Menyimpan ke server…</span>;
+    }
+    if (publishStatus === "error") {
+      return (
+        <span className="flex items-center gap-2 text-xs text-red-300">
+          <X size={14} />
+          Gagal publish{publishError ? `: ${publishError}` : ""}
+        </span>
+      );
+    }
+    const time = (lastPublishedAt ?? lastSaved)
+      ? new Date(lastPublishedAt ?? lastSaved!).toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
+    return (
+      <span className="flex items-center gap-2 text-xs text-muted">
+        <Check size={14} className="text-brown-soft" />
+        {isDraftDifferent
+          ? "Dinamis • menerbitkan perubahan…"
+          : time
+            ? `Dinamis • tersimpan di server ${time}`
+            : "Dinamis • tersimpan di server"}
+      </span>
+    );
+  }
 
   if (saveError) {
     return (

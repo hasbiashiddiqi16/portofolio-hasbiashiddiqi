@@ -100,7 +100,7 @@ export function DashboardPanel({
   /** Buka editor karya tertentu di panel Karya. */
   onEditWork: (workId: string) => void;
 }) {
-  const { content, isDraftDifferent } = useContent();
+  const { content, isDraftDifferent, dynamicActive, publishStatus } = useContent();
   const previewWorks = content.works.slice(0, 6);
 
   const stats: { label: string; value: number; tab: TabId }[] = [
@@ -129,9 +129,15 @@ export function DashboardPanel({
             : "border-line bg-surface/60 text-muted"
         }`}
       >
-        {isDraftDifferent
-          ? "Ada perubahan draft yang belum diterbitkan. Unduh JSON dari menu Pengaturan lalu ganti public/content.json."
-          : "Draft sama dengan versi yang diterbitkan."}
+        {dynamicActive
+          ? publishStatus === "error"
+            ? "Mode dinamis aktif, tapi penerbitan terakhir gagal. Cek status di kanan atas / menu Pengaturan."
+            : publishStatus === "syncing" || isDraftDifferent
+              ? "Mode dinamis: menerbitkan perubahan ke server agar tampil untuk semua pengunjung…"
+              : "Mode dinamis aktif. Setiap perubahan (termasuk karya baru) otomatis tampil untuk semua pengunjung — cukup refresh halaman."
+          : isDraftDifferent
+            ? "Ada perubahan draft yang belum diterbitkan. Unduh JSON dari menu Pengaturan lalu ganti public/content.json — atau aktifkan mode dinamis agar otomatis."
+            : "Draft sama dengan versi yang diterbitkan."}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -621,11 +627,20 @@ function downloadJson(content: Content) {
 }
 
 export function SettingsPanel() {
-  const { content, hasDraft, replace, discardDraft } = useContent();
+  const { content, hasDraft, replace, discardDraft, dynamicActive, publishStatus, publishNow } = useContent();
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [pwNotice, setPwNotice] = useState<Notice | null>(null);
   const [dataNotice, setDataNotice] = useState<Notice | null>(null);
+  const [publishNotice, setPublishNotice] = useState<Notice | null>(null);
+  const [publishing, setPublishing] = useState(false);
+
+  const publish = async () => {
+    setPublishing(true);
+    const result = await publishNow();
+    setPublishing(false);
+    setPublishNotice({ ok: result.ok, text: result.message });
+  };
 
   const changePassword = () => {
     if (newPw.length < 6) {
@@ -668,6 +683,41 @@ export function SettingsPanel() {
       <PageHeading title="Pengaturan" description="Publish, cadangan data, dan keamanan dashboard." />
 
       <Card
+        title="Mode dinamis (semua pengunjung)"
+        description={
+          dynamicActive
+            ? "Aktif. Perubahan di dashboard otomatis diterbitkan ke server dan tampil untuk semua pengunjung tanpa deploy ulang."
+            : "Belum aktif di hosting ini. Selama belum aktif, perubahan hanya tersimpan sebagai draft di browser ini."
+        }
+      >
+        <div
+          className={`rounded-2xl border px-5 py-4 text-sm ${
+            dynamicActive
+              ? "border-brown/50 bg-brown/10 text-brown-soft"
+              : "border-line bg-ink/40 text-muted"
+          }`}
+        >
+          {dynamicActive
+            ? publishStatus === "syncing"
+              ? "Sedang menerbitkan perubahan ke server…"
+              : "Status: aktif — karya baru otomatis tampil di halaman utama untuk semua pengunjung."
+            : "Status: belum aktif — ikuti langkah aktivasi di README.md (Vercel Storage → Blob, env CMS_PASSWORD, redeploy)."}
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <Button variant="primary" disabled={!dynamicActive || publishing} onClick={publish}>
+            {publishing ? "Menerbitkan…" : "Terbitkan sekarang"}
+          </Button>
+          <NoticeText notice={publishNotice} />
+        </div>
+        {!dynamicActive && (
+          <p className="text-xs leading-relaxed text-muted/70">
+            Tombol di atas aktif setelah mode dinamis menyala. Sambil menunggu, gunakan Unduh JSON di bawah
+            sebagai cadangan / cara publish manual.
+          </p>
+        )}
+      </Card>
+
+      <Card
         title="Publish & cadangan"
         description="Perubahan disimpan sebagai draft di browser ini. Untuk menerbitkan ke semua pengunjung, unduh JSON lalu simpan sebagai public/content.json dan deploy ulang."
       >
@@ -701,7 +751,9 @@ export function SettingsPanel() {
           <NoticeText notice={pwNotice} />
         </div>
         <p className="text-xs text-muted/70">
-          Ini proteksi sederhana untuk situs statis (password tersimpan di browser). Bukan pengamanan tingkat server.
+          Ini proteksi sederhana (password tersimpan di browser). Jika mode dinamis aktif, ubah juga env
+          CMS_PASSWORD di Vercel agar sama dengan password baru ini — server memakai env tersebut untuk
+          menerima penerbitan.
         </p>
       </Card>
     </div>
