@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useContent } from "../cms/ContentContext";
 import { isAuthenticated, login, logout } from "../cms/auth";
+import { createEmptyWork } from "../data/content";
 import {
   AboutPanel,
   ContactPanel,
@@ -128,10 +129,14 @@ function SaveStatus() {
   );
 }
 
-function renderPanel(tab: TabId, go: (tab: TabId) => void) {
+function renderPanel(
+  tab: TabId,
+  go: (tab: TabId) => void,
+  handlers: { onAddWork: () => void; onEditWork: (workId: string) => void; focusWorkId: string | null }
+) {
   switch (tab) {
     case "dashboard":
-      return <DashboardPanel onNavigate={go} />;
+      return <DashboardPanel onNavigate={go} onAddWork={handlers.onAddWork} onEditWork={handlers.onEditWork} />;
     case "hero":
       return <SiteHeroPanel />;
     case "about":
@@ -143,7 +148,7 @@ function renderPanel(tab: TabId, go: (tab: TabId) => void) {
     case "services":
       return <ServicesPanel />;
     case "works":
-      return <WorksPanel />;
+      return <WorksPanel focusWorkId={handlers.focusWorkId} />;
     case "contact":
       return <ContactPanel />;
     case "settings":
@@ -154,6 +159,8 @@ function renderPanel(tab: TabId, go: (tab: TabId) => void) {
 export default function AdminApp() {
   const [authed, setAuthed] = useState(isAuthenticated);
   const [tab, setTab] = useState<TabId>("dashboard");
+  const [focusWorkId, setFocusWorkId] = useState<string | null>(null);
+  const { content, update } = useContent();
 
   if (!authed) return <LoginScreen onSuccess={() => setAuthed(true)} />;
 
@@ -162,6 +169,20 @@ export default function AdminApp() {
   const go = (next: TabId) => {
     setTab(next);
     window.scrollTo({ top: 0 });
+  };
+
+  /** Tambah karya dari Dashboard: bentuknya sama seperti karya saat ini. */
+  const handleAddWork = () => {
+    const work = createEmptyWork(content.works);
+    update((c) => ({ ...c, works: [...c.works, work] }));
+    setFocusWorkId(work.id);
+    go("works");
+  };
+
+  /** Buka editor satu karya dari daftar karya di Dashboard. */
+  const handleEditWork = (workId: string) => {
+    setFocusWorkId(workId);
+    go("works");
   };
 
   const handleLogout = () => {
@@ -229,7 +250,9 @@ export default function AdminApp() {
           <SaveStatus />
         </header>
 
-        <div className="mx-auto max-w-4xl px-6 py-8 md:px-10 md:py-10">{renderPanel(tab, go)}</div>
+        <div className="mx-auto max-w-4xl px-6 py-8 md:px-10 md:py-10">
+          {renderPanel(tab, go, { onAddWork: handleAddWork, onEditWork: handleEditWork, focusWorkId })}
+        </div>
       </main>
     </div>
   );

@@ -98,6 +98,33 @@ export function findWorkBySlug(works: Work[], slug: string): Work | undefined {
 }
 
 /**
+ * Karya kosong baru — dipakai tombol "Tambah karya" di Dashboard maupun
+ * di panel Karya, agar karya baru selalu punya bentuk yang sama persis
+ * dengan karya yang sudah ada (field, slug unik, halaman detail).
+ */
+export function createEmptyWork(existing: Work[] = []): Work {
+  const id = newId();
+  const taken = new Set(existing.map((w) => w.slug));
+  let slug = `karya-${id}`;
+  let n = 2;
+  while (taken.has(slug)) slug = `karya-${id}-${n++}`;
+
+  return {
+    id,
+    slug,
+    title: "Karya baru",
+    category: "",
+    subtitle: "",
+    image: "",
+    gallery: [],
+    description: "",
+    details: [],
+    liveUrl: "",
+    liveLabel: "",
+  };
+}
+
+/**
  * Menggabungkan data (mis. dari localStorage atau impor JSON) dengan nilai
  * default, sehingga field yang hilang tidak membuat situs rusak.
  */

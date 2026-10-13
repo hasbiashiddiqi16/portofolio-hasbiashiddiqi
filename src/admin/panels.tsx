@@ -89,8 +89,19 @@ export function SectionLabelCard({
 /* Dashboard                                                           */
 /* ------------------------------------------------------------------ */
 
-export function DashboardPanel({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
+export function DashboardPanel({
+  onNavigate,
+  onAddWork,
+  onEditWork,
+}: {
+  onNavigate: (tab: TabId) => void;
+  /** Buat karya baru (bentuk sama seperti karya saat ini) lalu buka editornya. */
+  onAddWork: () => void;
+  /** Buka editor karya tertentu di panel Karya. */
+  onEditWork: (workId: string) => void;
+}) {
   const { content, isDraftDifferent } = useContent();
+  const previewWorks = content.works.slice(0, 6);
 
   const stats: { label: string; value: number; tab: TabId }[] = [
     { label: "Karya", value: content.works.length, tab: "works" },
@@ -140,10 +151,66 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (tab: TabId) => voi
         ))}
       </div>
 
+      <Card
+        title="Karya"
+        description={`${content.works.length} karya tampil di situs. Karya baru otomatis muncul di grid Works dan punya halaman detail yang sama seperti karya lainnya.`}
+        actions={
+          <Button variant="primary" onClick={onAddWork}>
+            <Plus size={16} />
+            Tambah karya
+          </Button>
+        }
+      >
+        {previewWorks.length === 0 ? (
+          <p className="text-sm text-muted">
+            Belum ada karya. Klik <span className="text-sand">Tambah karya</span> untuk membuat karya pertama.
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {previewWorks.map((work, i) => (
+              <button
+                key={work.id}
+                type="button"
+                onClick={() => onEditWork(work.id)}
+                className="group flex items-center gap-4 rounded-2xl border border-line/70 bg-ink/40 p-3 text-left transition-colors hover:border-brown/60"
+              >
+                <span className="flex h-16 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-surface">
+                  {work.image ? (
+                    <img src={work.image} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="px-2 text-center text-[10px] leading-tight text-muted">Belum ada gambar</span>
+                  )}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate font-display text-sm font-medium text-sand">
+                    {String(i + 1).padStart(2, "0")} · {work.title || "Tanpa judul"}
+                  </span>
+                  <span className="mt-1 block truncate text-xs text-muted">
+                    {[work.category, work.subtitle].filter(Boolean).join(" • ") || "Klik untuk mengedit"}
+                  </span>
+                  <span className="mt-1 block text-xs text-brown-soft opacity-0 transition-opacity group-hover:opacity-100">
+                    Edit karya →
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {content.works.length > previewWorks.length && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-muted">
+              Menampilkan {previewWorks.length} dari {content.works.length} karya.
+            </p>
+            <Button onClick={() => onNavigate("works")}>Kelola semua karya</Button>
+          </div>
+        )}
+      </Card>
+
       <Card title="Mulai cepat">
         <ol className="list-decimal space-y-3 pl-5 text-sm leading-relaxed text-muted">
           <li>Buka <span className="text-sand">Hero &amp; Situs</span> untuk mengganti judul dan teks pembuka.</li>
-          <li>Di <span className="text-sand">Karya</span>, unggah gambar atau tempel URL, lalu atur urutannya.</li>
+          <li>Klik <span className="text-sand">Tambah karya</span> di atas (atau di panel <span className="text-sand">Karya</span>) untuk menambah karya baru, lalu isi judul, gambar, dan deskripsinya sama seperti karya yang sudah ada.</li>
           <li>Setelah selesai, unduh JSON di <span className="text-sand">Pengaturan</span> dan simpan sebagai <code className="text-brown-soft">public/content.json</code>.</li>
           <li>Build dan deploy ulang agar perubahan tampil untuk semua pengunjung.</li>
         </ol>
