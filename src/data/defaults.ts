@@ -1,7 +1,13 @@
 import type { Content, NavLink, Work } from "./types";
 
 export const SITE_URL = "https://portofolio-hasbiashiddiqi.netlify.app";
-export const ASSET_BASE = `${SITE_URL}/assets/img/`;
+// PENTING: gambar harus di-host dari domain yang sama (folder public/),
+// BUKAN dari hosting lama. Dulu path ini menunjuk ke Netlify
+// (https://portofolio-hasbiashiddiqi.netlify.app/assets/img/...), sehingga
+// saat situs Netlify tersebut di-pause/nonaktif, semua gambar ikut hilang
+// di mana pun situs ini di-deploy (termasuk Vercel).
+// File aslinya tinggal ditaruh di public/assets/img/ dengan nama yang sama.
+export const ASSET_BASE = "/assets/img/";
 
 export const NAV_LINKS: NavLink[] = [
   { label: "About", href: "#about" },

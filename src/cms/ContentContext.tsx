@@ -9,12 +9,33 @@ import {
   type ReactNode,
 } from "react";
 import { DEFAULT_CONTENT, mergeContent, type Content } from "../data/content";
+import { getPassword, isAuthenticated } from "./auth";
 
 const DRAFT_KEY = "hasbi-portfolio-cms-draft-v1";
 const PUBLISHED_URL = "./content.json";
+const DYNAMIC_URL = "/api/content";
 
-/** Versi publish: public/content.json (fallback ke default bawaan). */
-async function fetchPublished(): Promise<Content> {
+export type PublishStatus = "local" | "syncing" | "synced" | "error";
+
+/**
+ * Konten dinamis dari server (Vercel Blob lewat /api/content).
+ * `active: false` berarti backend belum diaktifkan di hosting ini dan
+ * situs memakai mode statis seperti biasa.
+ */
+async function fetchServerContent(): Promise<{ active: boolean; content: Content | null }> {
+  try {
+    const res = await fetch(DYNAMIC_URL, { cache: "no-store" });
+    if (!res.ok) return { active: false, content: null };
+    const data = (await res.json()) as { dynamic?: boolean; content?: unknown };
+    if (!data || data.dynamic !== true) return { active: false, content: null };
+    return { active: true, content: data.content ? mergeContent(data.content) : null };
+  } catch {
+    return { active: false, content: null };
+  }
+}
+
+/** Versi publish statis: public/content.json (fallback ke default bawaan). */
+async function fetchStaticContent(): Promise<Content> {
   try {
     const res = await fetch(PUBLISHED_URL, { cache: "no-store" });
     if (!res.ok) return DEFAULT_CONTENT;
@@ -46,13 +67,20 @@ function writeDraft(content: Content): string | null {
 type ContentContextValue = {
   /** Konten yang sedang aktif (draft jika ada, otherwise versi publish). */
   content: Content;
-  /** Versi publish (public/content.json). */
+  /** Versi publish (server dinamis / public/content.json). */
   published: Content;
   hasDraft: boolean;
   isDraftDifferent: boolean;
   loaded: boolean;
   saveError: string | null;
   lastSaved: number | null;
+  /** True bila backend /api/content aktif (mode dinamis). */
+  dynamicActive: boolean;
+  publishStatus: PublishStatus;
+  publishError: string | null;
+  lastPublishedAt: number | null;
+  /** Terbitkan konten saat ini ke server agar tampil untuk semua pengunjung. */
+  publishNow: () => Promise<{ ok: boolean; message: string }>;
   update: (mutator: (current: Content) => Content) => void;
   replace: (next: unknown) => void;
   discardDraft: () => void;
@@ -69,23 +97,36 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<number | null>(null);
+  const [dynamicActive, setDynamicActive] = useState(false);
+  const [publishStatus, setPublishStatus] = useState<PublishStatus>("local");
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [lastPublishedAt, setLastPublishedAt] = useState<number | null>(null);
 
   const contentRef = useRef(content);
   const publishedRef = useRef(published);
+  const dynamicRef = useRef(false);
+  const publishingRef = useRef(false);
 
-  // Load published content once on mount.
+  // Load konten: utamakan server dinamis, fallback ke statis.
   useEffect(() => {
     let cancelled = false;
-    fetchPublished().then((pub) => {
+    (async () => {
+      const server = await fetchServerContent();
+      if (cancelled) return;
+      dynamicRef.current = server.active;
+      setDynamicActive(server.active);
+
+      const pub = server.content ?? (await fetchStaticContent());
       if (cancelled) return;
       publishedRef.current = pub;
       setPublished(pub);
+      if (server.active) setPublishStatus("synced");
       if (window.localStorage.getItem(DRAFT_KEY) === null) {
         contentRef.current = pub;
         setContent(pub);
       }
       setLoaded(true);
-    });
+    })();
     return () => {
       cancelled = true;
     };
@@ -130,6 +171,74 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     setLastSaved(null);
   }, []);
 
+  const publishNow = useCallback(async (): Promise<{ ok: boolean; message: string }> => {
+    if (!dynamicRef.current) {
+      return {
+        ok: false,
+        message:
+          "Mode dinamis belum aktif di hosting ini. Aktifkan Vercel Blob + env CMS_PASSWORD, lalu redeploy (lihat Pengaturan / README).",
+      };
+    }
+    if (publishingRef.current) return { ok: false, message: "Sedang menerbitkan, tunggu sebentar…" };
+
+    publishingRef.current = true;
+    setPublishStatus("syncing");
+    setPublishError(null);
+    try {
+      const snapshot = contentRef.current;
+      const res = await fetch(DYNAMIC_URL, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-password": getPassword(),
+        },
+        body: JSON.stringify(snapshot),
+      });
+      const data = (await res.json().catch(() => null)) as { message?: string } | null;
+      if (!res.ok) throw new Error(data?.message || `Server membalas ${res.status}.`);
+
+      publishedRef.current = snapshot;
+      setPublished(snapshot);
+      setLastPublishedAt(Date.now());
+      setPublishStatus("synced");
+      return { ok: true, message: "Berhasil diterbitkan. Semua pengunjung kini melihat versi ini." };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Gagal menerbitkan ke server.";
+      setPublishStatus("error");
+      setPublishError(message);
+      return { ok: false, message };
+    } finally {
+      publishingRef.current = false;
+    }
+  }, []);
+
+  // Mode dinamis: terbitkan otomatis ~1,2 detik setelah admin berhenti
+  // mengedit, sehingga tambah/edit karya langsung tampil untuk semua.
+  useEffect(() => {
+    if (!loaded || !dynamicActive || !isAuthenticated()) return;
+    if (JSON.stringify(content) === JSON.stringify(publishedRef.current)) return;
+    const timer = window.setTimeout(() => void publishNow(), 1200);
+    return () => window.clearTimeout(timer);
+  }, [content, loaded, dynamicActive, publishNow]);
+
+  // Mode dinamis: pengunjung (bukan admin) mengecek konten terbaru tiap
+  // 30 detik, jadi halaman ikut ter-update tanpa deploy / reload manual.
+  useEffect(() => {
+    if (!dynamicActive) return;
+    const id = window.setInterval(async () => {
+      if (isAuthenticated()) return;
+      if (window.localStorage.getItem(DRAFT_KEY) !== null) return;
+      const server = await fetchServerContent();
+      if (!server.content) return;
+      if (JSON.stringify(server.content) === JSON.stringify(publishedRef.current)) return;
+      publishedRef.current = server.content;
+      contentRef.current = server.content;
+      setPublished(server.content);
+      setContent(server.content);
+    }, 30000);
+    return () => window.clearInterval(id);
+  }, [dynamicActive]);
+
   const isDraftDifferent = useMemo(
     () => hasDraft && JSON.stringify(content) !== JSON.stringify(published),
     [hasDraft, content, published]
@@ -144,11 +253,32 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       loaded,
       saveError,
       lastSaved,
+      dynamicActive,
+      publishStatus,
+      publishError,
+      lastPublishedAt,
+      publishNow,
       update,
       replace,
       discardDraft,
     }),
-    [content, published, hasDraft, isDraftDifferent, loaded, saveError, lastSaved, update, replace, discardDraft]
+    [
+      content,
+      published,
+      hasDraft,
+      isDraftDifferent,
+      loaded,
+      saveError,
+      lastSaved,
+      dynamicActive,
+      publishStatus,
+      publishError,
+      lastPublishedAt,
+      publishNow,
+      update,
+      replace,
+      discardDraft,
+    ]
   );
 
   return <ContentContext.Provider value={value}>{children}</ContentContext.Provider>;

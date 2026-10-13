@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useContent } from "../cms/ContentContext";
 import { isAuthenticated, login, logout } from "../cms/auth";
+import { createEmptyWork } from "../data/content";
 import {
   AboutPanel,
   ContactPanel,
@@ -101,7 +102,38 @@ function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
 }
 
 function SaveStatus() {
-  const { saveError, lastSaved, isDraftDifferent } = useContent();
+  const { saveError, lastSaved, isDraftDifferent, dynamicActive, publishStatus, publishError, lastPublishedAt } =
+    useContent();
+
+  if (dynamicActive) {
+    if (publishStatus === "syncing") {
+      return <span className="flex items-center gap-2 text-xs text-muted">Menyimpan ke server…</span>;
+    }
+    if (publishStatus === "error") {
+      return (
+        <span className="flex items-center gap-2 text-xs text-red-300">
+          <X size={14} />
+          Gagal publish{publishError ? `: ${publishError}` : ""}
+        </span>
+      );
+    }
+    const time = (lastPublishedAt ?? lastSaved)
+      ? new Date(lastPublishedAt ?? lastSaved!).toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
+    return (
+      <span className="flex items-center gap-2 text-xs text-muted">
+        <Check size={14} className="text-brown-soft" />
+        {isDraftDifferent
+          ? "Dinamis • menerbitkan perubahan…"
+          : time
+            ? `Dinamis • tersimpan di server ${time}`
+            : "Dinamis • tersimpan di server"}
+      </span>
+    );
+  }
 
   if (saveError) {
     return (
@@ -128,10 +160,14 @@ function SaveStatus() {
   );
 }
 
-function renderPanel(tab: TabId, go: (tab: TabId) => void) {
+function renderPanel(
+  tab: TabId,
+  go: (tab: TabId) => void,
+  handlers: { onAddWork: () => void; onEditWork: (workId: string) => void; focusWorkId: string | null }
+) {
   switch (tab) {
     case "dashboard":
-      return <DashboardPanel onNavigate={go} />;
+      return <DashboardPanel onNavigate={go} onAddWork={handlers.onAddWork} onEditWork={handlers.onEditWork} />;
     case "hero":
       return <SiteHeroPanel />;
     case "about":
@@ -143,7 +179,7 @@ function renderPanel(tab: TabId, go: (tab: TabId) => void) {
     case "services":
       return <ServicesPanel />;
     case "works":
-      return <WorksPanel />;
+      return <WorksPanel focusWorkId={handlers.focusWorkId} />;
     case "contact":
       return <ContactPanel />;
     case "settings":
@@ -154,6 +190,8 @@ function renderPanel(tab: TabId, go: (tab: TabId) => void) {
 export default function AdminApp() {
   const [authed, setAuthed] = useState(isAuthenticated);
   const [tab, setTab] = useState<TabId>("dashboard");
+  const [focusWorkId, setFocusWorkId] = useState<string | null>(null);
+  const { content, update } = useContent();
 
   if (!authed) return <LoginScreen onSuccess={() => setAuthed(true)} />;
 
@@ -162,6 +200,20 @@ export default function AdminApp() {
   const go = (next: TabId) => {
     setTab(next);
     window.scrollTo({ top: 0 });
+  };
+
+  /** Tambah karya dari Dashboard: bentuknya sama seperti karya saat ini, ditempatkan di urutan pertama. */
+  const handleAddWork = () => {
+    const work = createEmptyWork(content.works);
+    update((c) => ({ ...c, works: [work, ...c.works] }));
+    setFocusWorkId(work.id);
+    go("works");
+  };
+
+  /** Buka editor satu karya dari daftar karya di Dashboard. */
+  const handleEditWork = (workId: string) => {
+    setFocusWorkId(workId);
+    go("works");
   };
 
   const handleLogout = () => {
@@ -229,7 +281,9 @@ export default function AdminApp() {
           <SaveStatus />
         </header>
 
-        <div className="mx-auto max-w-4xl px-6 py-8 md:px-10 md:py-10">{renderPanel(tab, go)}</div>
+        <div className="mx-auto max-w-4xl px-6 py-8 md:px-10 md:py-10">
+          {renderPanel(tab, go, { onAddWork: handleAddWork, onEditWork: handleEditWork, focusWorkId })}
+        </div>
       </main>
     </div>
   );

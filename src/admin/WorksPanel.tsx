@@ -1,6 +1,7 @@
 import { ExternalLink, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useContent } from "../cms/ContentContext";
-import { newId, slugify, type Work } from "../data/content";
+import { createEmptyWork, slugify, type Work } from "../data/content";
 import { workHref } from "../lib/router";
 import { SectionLabelCard } from "./panels";
 import {
@@ -31,6 +32,7 @@ function WorkEditor({
   index,
   total,
   works,
+  highlighted,
   onPatch,
   onMove,
   onRemove,
@@ -39,6 +41,7 @@ function WorkEditor({
   index: number;
   total: number;
   works: Work[];
+  highlighted?: boolean;
   onPatch: (patch: Partial<Work>) => void;
   onMove: (dir: -1 | 1) => void;
   onRemove: () => void;
@@ -47,6 +50,12 @@ function WorkEditor({
   const previewPath = `${window.location.pathname}${window.location.search}${workHref(work.slug)}`;
 
   return (
+    <div
+      id={`work-editor-${work.id}`}
+      className={`scroll-mt-6 rounded-3xl transition-shadow duration-700 ${
+        highlighted ? "shadow-[0_0_0_2px_var(--color-brown,#b8825a)]" : ""
+      }`}
+    >
     <Card
       title={`${String(index + 1).padStart(2, "0")} · ${work.title || "Tanpa judul"}`}
       actions={<ItemActions index={index} total={total} onMove={onMove} onRemove={onRemove} />}
@@ -56,6 +65,7 @@ function WorkEditor({
       <div className="grid gap-5 sm:grid-cols-2">
         <Field label="Judul">
           <TextInput
+            data-work-title="true"
             value={work.title}
             onChange={(e) => onPatch({ title: e.target.value })}
             onBlur={() => {
@@ -154,12 +164,40 @@ function WorkEditor({
         </Field>
       </div>
     </Card>
+    </div>
   );
 }
 
-export default function WorksPanel() {
+export default function WorksPanel({ focusWorkId }: { focusWorkId?: string | null }) {
   const { content, update } = useContent();
   const works = content.works;
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  // Karya dibuka dari Dashboard (tambah/edit) -> tandai untuk di-scroll.
+  useEffect(() => {
+    if (focusWorkId) setHighlightId(focusWorkId);
+  }, [focusWorkId]);
+
+  // Scroll ke editor karya yang ditandai, fokuskan kolom Judul, lalu
+  // hilangkan highlight setelah beberapa detik.
+  useEffect(() => {
+    if (!highlightId) return;
+    const scrollTimer = window.setTimeout(() => {
+      const el = document.getElementById(`work-editor-${highlightId}`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      const titleInput = el.querySelector<HTMLInputElement>('[data-work-title="true"]');
+      titleInput?.focus({ preventScroll: true });
+      titleInput?.select();
+    }, 80);
+    const clearTimer = window.setTimeout(() => {
+      setHighlightId((current) => (current === highlightId ? null : current));
+    }, 5000);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [highlightId, works.length]);
 
   const patchWork = (i: number, patch: Partial<Work>) =>
     update((c) => ({ ...c, works: c.works.map((w, j) => (j === i ? { ...w, ...patch } : w)) }));
@@ -169,36 +207,27 @@ export default function WorksPanel() {
 
   const removeWork = (i: number) => update((c) => ({ ...c, works: removeAt(c.works, i) }));
 
-  const addWork = () =>
-    update((c) => {
-      const id = newId();
-      return {
-        ...c,
-        works: [
-          ...c.works,
-          {
-            id,
-            slug: `karya-${id}`,
-            title: "Karya baru",
-            category: "",
-            subtitle: "",
-            image: "",
-            gallery: [],
-            description: "",
-            details: [],
-            liveUrl: "",
-            liveLabel: "",
-          },
-        ],
-      };
-    });
+  /** Sama persis dengan tombol "Tambah karya" di Dashboard: form baru di urutan pertama. */
+  const addWork = () => {
+    const work = createEmptyWork(works);
+    update((c) => ({ ...c, works: [work, ...c.works] }));
+    setHighlightId(work.id);
+  };
 
   return (
     <div className="flex flex-col gap-8">
-      <PageHeading
-        title="Karya"
-        description={`${works.length} karya tampil di situs. Setiap karya memiliki halaman detail sendiri dengan tampilan yang sama seperti portofolio.`}
-      />
+      <div className="flex flex-col gap-5">
+        <PageHeading
+          title="Karya"
+          description={`${works.length} karya tampil di situs. Setiap karya memiliki halaman detail sendiri dengan tampilan yang sama seperti portofolio.`}
+        />
+        <div>
+          <Button variant="primary" onClick={addWork}>
+            <Plus size={16} />
+            Tambah karya
+          </Button>
+        </div>
+      </div>
 
       <SectionLabelCard sectionKey="works" />
 
@@ -209,18 +238,12 @@ export default function WorksPanel() {
           index={i}
           total={works.length}
           works={works}
+          highlighted={work.id === highlightId}
           onPatch={(patch) => patchWork(i, patch)}
           onMove={(dir) => moveWork(i, dir)}
           onRemove={() => removeWork(i)}
         />
       ))}
-
-      <div>
-        <Button variant="primary" onClick={addWork}>
-          <Plus size={16} />
-          Tambah karya
-        </Button>
-      </div>
     </div>
   );
 }

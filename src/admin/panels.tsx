@@ -89,8 +89,19 @@ export function SectionLabelCard({
 /* Dashboard                                                           */
 /* ------------------------------------------------------------------ */
 
-export function DashboardPanel({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  const { content, isDraftDifferent } = useContent();
+export function DashboardPanel({
+  onNavigate,
+  onAddWork,
+  onEditWork,
+}: {
+  onNavigate: (tab: TabId) => void;
+  /** Buat karya baru (bentuk sama seperti karya saat ini) lalu buka editornya. */
+  onAddWork: () => void;
+  /** Buka editor karya tertentu di panel Karya. */
+  onEditWork: (workId: string) => void;
+}) {
+  const { content, isDraftDifferent, dynamicActive, publishStatus } = useContent();
+  const previewWorks = content.works.slice(0, 6);
 
   const stats: { label: string; value: number; tab: TabId }[] = [
     { label: "Karya", value: content.works.length, tab: "works" },
@@ -118,9 +129,15 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (tab: TabId) => voi
             : "border-line bg-surface/60 text-muted"
         }`}
       >
-        {isDraftDifferent
-          ? "Ada perubahan draft yang belum diterbitkan. Unduh JSON dari menu Pengaturan lalu ganti public/content.json."
-          : "Draft sama dengan versi yang diterbitkan."}
+        {dynamicActive
+          ? publishStatus === "error"
+            ? "Mode dinamis aktif, tapi penerbitan terakhir gagal. Cek status di kanan atas / menu Pengaturan."
+            : publishStatus === "syncing" || isDraftDifferent
+              ? "Mode dinamis: menerbitkan perubahan ke server agar tampil untuk semua pengunjung…"
+              : "Mode dinamis aktif. Setiap perubahan (termasuk karya baru) otomatis tampil untuk semua pengunjung — cukup refresh halaman."
+          : isDraftDifferent
+            ? "Ada perubahan draft yang belum diterbitkan. Unduh JSON dari menu Pengaturan lalu ganti public/content.json — atau aktifkan mode dinamis agar otomatis."
+            : "Draft sama dengan versi yang diterbitkan."}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -140,10 +157,66 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (tab: TabId) => voi
         ))}
       </div>
 
+      <Card
+        title="Karya"
+        description={`${content.works.length} karya tampil di situs. Karya baru otomatis muncul di grid Works dan punya halaman detail yang sama seperti karya lainnya.`}
+        actions={
+          <Button variant="primary" onClick={onAddWork}>
+            <Plus size={16} />
+            Tambah karya
+          </Button>
+        }
+      >
+        {previewWorks.length === 0 ? (
+          <p className="text-sm text-muted">
+            Belum ada karya. Klik <span className="text-sand">Tambah karya</span> untuk membuat karya pertama.
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {previewWorks.map((work, i) => (
+              <button
+                key={work.id}
+                type="button"
+                onClick={() => onEditWork(work.id)}
+                className="group flex items-center gap-4 rounded-2xl border border-line/70 bg-ink/40 p-3 text-left transition-colors hover:border-brown/60"
+              >
+                <span className="flex h-16 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-surface">
+                  {work.image ? (
+                    <img src={work.image} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="px-2 text-center text-[10px] leading-tight text-muted">Belum ada gambar</span>
+                  )}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate font-display text-sm font-medium text-sand">
+                    {String(i + 1).padStart(2, "0")} · {work.title || "Tanpa judul"}
+                  </span>
+                  <span className="mt-1 block truncate text-xs text-muted">
+                    {[work.category, work.subtitle].filter(Boolean).join(" • ") || "Klik untuk mengedit"}
+                  </span>
+                  <span className="mt-1 block text-xs text-brown-soft opacity-0 transition-opacity group-hover:opacity-100">
+                    Edit karya →
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {content.works.length > previewWorks.length && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-muted">
+              Menampilkan {previewWorks.length} dari {content.works.length} karya.
+            </p>
+            <Button onClick={() => onNavigate("works")}>Kelola semua karya</Button>
+          </div>
+        )}
+      </Card>
+
       <Card title="Mulai cepat">
         <ol className="list-decimal space-y-3 pl-5 text-sm leading-relaxed text-muted">
           <li>Buka <span className="text-sand">Hero &amp; Situs</span> untuk mengganti judul dan teks pembuka.</li>
-          <li>Di <span className="text-sand">Karya</span>, unggah gambar atau tempel URL, lalu atur urutannya.</li>
+          <li>Klik <span className="text-sand">Tambah karya</span> di atas (atau di panel <span className="text-sand">Karya</span>) untuk menambah karya baru, lalu isi judul, gambar, dan deskripsinya sama seperti karya yang sudah ada.</li>
           <li>Setelah selesai, unduh JSON di <span className="text-sand">Pengaturan</span> dan simpan sebagai <code className="text-brown-soft">public/content.json</code>.</li>
           <li>Build dan deploy ulang agar perubahan tampil untuk semua pengunjung.</li>
         </ol>
@@ -554,11 +627,20 @@ function downloadJson(content: Content) {
 }
 
 export function SettingsPanel() {
-  const { content, hasDraft, replace, discardDraft } = useContent();
+  const { content, hasDraft, replace, discardDraft, dynamicActive, publishStatus, publishNow } = useContent();
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [pwNotice, setPwNotice] = useState<Notice | null>(null);
   const [dataNotice, setDataNotice] = useState<Notice | null>(null);
+  const [publishNotice, setPublishNotice] = useState<Notice | null>(null);
+  const [publishing, setPublishing] = useState(false);
+
+  const publish = async () => {
+    setPublishing(true);
+    const result = await publishNow();
+    setPublishing(false);
+    setPublishNotice({ ok: result.ok, text: result.message });
+  };
 
   const changePassword = () => {
     if (newPw.length < 6) {
@@ -601,6 +683,41 @@ export function SettingsPanel() {
       <PageHeading title="Pengaturan" description="Publish, cadangan data, dan keamanan dashboard." />
 
       <Card
+        title="Mode dinamis (semua pengunjung)"
+        description={
+          dynamicActive
+            ? "Aktif. Perubahan di dashboard otomatis diterbitkan ke server dan tampil untuk semua pengunjung tanpa deploy ulang."
+            : "Belum aktif di hosting ini. Selama belum aktif, perubahan hanya tersimpan sebagai draft di browser ini."
+        }
+      >
+        <div
+          className={`rounded-2xl border px-5 py-4 text-sm ${
+            dynamicActive
+              ? "border-brown/50 bg-brown/10 text-brown-soft"
+              : "border-line bg-ink/40 text-muted"
+          }`}
+        >
+          {dynamicActive
+            ? publishStatus === "syncing"
+              ? "Sedang menerbitkan perubahan ke server…"
+              : "Status: aktif — karya baru otomatis tampil di halaman utama untuk semua pengunjung."
+            : "Status: belum aktif — ikuti langkah aktivasi di README.md (Vercel Storage → Blob, env CMS_PASSWORD, redeploy)."}
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <Button variant="primary" disabled={!dynamicActive || publishing} onClick={publish}>
+            {publishing ? "Menerbitkan…" : "Terbitkan sekarang"}
+          </Button>
+          <NoticeText notice={publishNotice} />
+        </div>
+        {!dynamicActive && (
+          <p className="text-xs leading-relaxed text-muted/70">
+            Tombol di atas aktif setelah mode dinamis menyala. Sambil menunggu, gunakan Unduh JSON di bawah
+            sebagai cadangan / cara publish manual.
+          </p>
+        )}
+      </Card>
+
+      <Card
         title="Publish & cadangan"
         description="Perubahan disimpan sebagai draft di browser ini. Untuk menerbitkan ke semua pengunjung, unduh JSON lalu simpan sebagai public/content.json dan deploy ulang."
       >
@@ -634,7 +751,9 @@ export function SettingsPanel() {
           <NoticeText notice={pwNotice} />
         </div>
         <p className="text-xs text-muted/70">
-          Ini proteksi sederhana untuk situs statis (password tersimpan di browser). Bukan pengamanan tingkat server.
+          Ini proteksi sederhana (password tersimpan di browser). Jika mode dinamis aktif, ubah juga env
+          CMS_PASSWORD di Vercel agar sama dengan password baru ini — server memakai env tersebut untuk
+          menerima penerbitan.
         </p>
       </Card>
     </div>
