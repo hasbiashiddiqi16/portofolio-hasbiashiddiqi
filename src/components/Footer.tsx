@@ -14,6 +14,8 @@ export default function Footer() {
         <div className="flex items-center gap-8">
           <a
             href="#/admin"
+            target="_blank"
+            rel="noreferrer"
             className="font-display text-xs uppercase tracking-[0.3em] text-muted/60 transition-colors hover:text-brown-soft"
           >
             Dashboard
