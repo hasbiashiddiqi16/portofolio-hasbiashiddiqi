@@ -207,10 +207,10 @@ export default function WorksPanel({ focusWorkId }: { focusWorkId?: string | nul
 
   const removeWork = (i: number) => update((c) => ({ ...c, works: removeAt(c.works, i) }));
 
-  /** Sama persis dengan tombol "Tambah karya" di Dashboard. */
+  /** Sama persis dengan tombol "Tambah karya" di Dashboard: form baru di urutan pertama. */
   const addWork = () => {
     const work = createEmptyWork(works);
-    update((c) => ({ ...c, works: [...c.works, work] }));
+    update((c) => ({ ...c, works: [work, ...c.works] }));
     setHighlightId(work.id);
   };
 

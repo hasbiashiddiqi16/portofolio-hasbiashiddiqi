@@ -171,10 +171,10 @@ export default function AdminApp() {
     window.scrollTo({ top: 0 });
   };
 
-  /** Tambah karya dari Dashboard: bentuknya sama seperti karya saat ini. */
+  /** Tambah karya dari Dashboard: bentuknya sama seperti karya saat ini, ditempatkan di urutan pertama. */
   const handleAddWork = () => {
     const work = createEmptyWork(content.works);
-    update((c) => ({ ...c, works: [...c.works, work] }));
+    update((c) => ({ ...c, works: [work, ...c.works] }));
     setFocusWorkId(work.id);
     go("works");
   };
