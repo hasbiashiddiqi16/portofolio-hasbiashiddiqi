@@ -216,15 +216,17 @@ export default function WorksPanel({ focusWorkId }: { focusWorkId?: string | nul
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-5">
         <PageHeading
           title="Karya"
           description={`${works.length} karya tampil di situs. Setiap karya memiliki halaman detail sendiri dengan tampilan yang sama seperti portofolio.`}
         />
-        <Button variant="primary" onClick={addWork}>
-          <Plus size={16} />
-          Tambah karya
-        </Button>
+        <div>
+          <Button variant="primary" onClick={addWork}>
+            <Plus size={16} />
+            Tambah karya
+          </Button>
+        </div>
       </div>
 
       <SectionLabelCard sectionKey="works" />
@@ -242,13 +244,6 @@ export default function WorksPanel({ focusWorkId }: { focusWorkId?: string | nul
           onRemove={() => removeWork(i)}
         />
       ))}
-
-      <div>
-        <Button variant="primary" onClick={addWork}>
-          <Plus size={16} />
-          Tambah karya
-        </Button>
-      </div>
     </div>
   );
 }
