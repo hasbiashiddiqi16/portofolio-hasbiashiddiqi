@@ -37,6 +37,18 @@ export function toTelHref(phone: string): string {
 
 const str = (v: unknown, fallback = ""): string => (typeof v === "string" ? v : fallback);
 
+/**
+ * Migrasi URL gambar lama: konten yang tersimpan di localStorage (draft CMS)
+ * atau content.json hasil unduhan lama masih memakai URL absolut Netlify.
+ * Situs Netlify tersebut sudah di-pause, jadi URL-nya ditulis ulang ke path
+ * lokal agar gambar diambil dari domain yang sama dengan situs ini.
+ */
+const LEGACY_ASSET_RE = /^https?:\/\/portofolio-hasbiashiddiqi\.netlify\.app\/assets\/img\//;
+
+export function localizeImageUrl(url: string): string {
+  return url.replace(LEGACY_ASSET_RE, "/assets/img/");
+}
+
 const strList = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
@@ -53,8 +65,8 @@ function normalizeWork(raw: unknown): Work | null {
     title,
     category: str(r.category),
     subtitle: str(r.subtitle),
-    image: str(r.image),
-    gallery: strList(r.gallery),
+    image: localizeImageUrl(str(r.image)),
+    gallery: strList(r.gallery).map(localizeImageUrl),
     description: str(r.description),
     details: strList(r.details),
     liveUrl: str(r.liveUrl),
@@ -103,7 +115,7 @@ export function mergeContent(raw: unknown): Content {
     site: obj(source.site, d.site),
     hero: obj(source.hero, d.hero),
     sections: obj(source.sections, d.sections),
-    about: obj(source.about, d.about),
+    about: { ...obj(source.about, d.about), image: localizeImageUrl(obj(source.about, d.about).image) },
     information: obj(source.information, d.information),
     experience: list(source.experience, d.experience),
     skillGroups: list(source.skillGroups, d.skillGroups),
