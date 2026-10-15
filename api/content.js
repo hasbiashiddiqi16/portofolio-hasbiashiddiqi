@@ -10,18 +10,37 @@
  *
  * Pengaturan di Vercel (satu kali):
  *   1. Storage -> Create -> Blob -> hubungkan ke project ini.
- *      (Otomatis menambahkan env BLOB_READ_WRITE_TOKEN.)
+ *      Dashboard menambahkan kredensial Blob secara otomatis, dalam salah
+ *      satu bentuk: env BLOB_READ_WRITE_TOKEN, atau BLOB_STORE_ID (auth
+ *      OIDC). Keduanya didukung SDK @vercel/blob dan endpoint ini.
  *   2. Settings -> Environment Variables:
  *        CMS_PASSWORD = password dashboard (samakan dengan yang dipakai login)
  *   3. Redeploy.
  *
- * Jika BLOB_READ_WRITE_TOKEN belum ada, endpoint ini membalas 501 dan
+ * Jika kredensial Blob belum terbaca di server, endpoint ini membalas 501
+ * (disertai field `checks` berisi kredensial mana yang terdeteksi) dan
  * situs otomatis jatuh kembali ke mode statis (public/content.json /
  * konten bawaan), jadi situs tidak pernah rusak selama belum diaktifkan.
  */
 import { list, put } from "@vercel/blob";
 
 const BLOB_PATH = "content.json";
+
+/** Keberadaan kredensial Blob di env server (tanpa membocorkan nilainya). */
+function credentialStatus() {
+  return {
+    hasReadWriteToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+    hasBlobStoreId: Boolean(process.env.BLOB_STORE_ID),
+    hasOidcToken: Boolean(process.env.VERCEL_OIDC_TOKEN),
+    hasCmsPassword: Boolean(process.env.CMS_PASSWORD || process.env.ADMIN_PASSWORD),
+  };
+}
+
+/** SDK bisa bekerja bila ada token read/write ATAU store id (OIDC). */
+function blobConfigured() {
+  const s = credentialStatus();
+  return s.hasReadWriteToken || s.hasBlobStoreId;
+}
 
 function sendJson(res, status, body) {
   res.statusCode = status;
@@ -55,12 +74,13 @@ async function readBody(req) {
 }
 
 export default async function handler(req, res) {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  if (!blobConfigured()) {
     return sendJson(res, 501, {
       dynamic: false,
       configured: false,
+      checks: credentialStatus(),
       message:
-        "Mode dinamis belum aktif: buat Vercel Blob (Storage) dan redeploy. Lihat README.md bagian Mode Dinamis.",
+        "Mode dinamis belum aktif: kredensial Vercel Blob belum terbaca di server (periksa Storage terhubung ke project ini untuk environment Production, lalu redeploy). Lihat README.md bagian Mode Dinamis.",
     });
   }
 
@@ -112,10 +132,16 @@ export default async function handler(req, res) {
     res.setHeader("Allow", "GET, PUT, POST");
     return sendJson(res, 405, { dynamic: true, configured: true, message: "Method tidak didukung." });
   } catch (err) {
-    return sendJson(res, 502, {
-      dynamic: true,
-      configured: true,
-      message: err instanceof Error ? err.message : "Kesalahan server tidak diketahui.",
+    const message = err instanceof Error ? err.message : "Kesalahan server tidak diketahui.";
+    // Kredensial terdaftar tapi tidak bisa dipakai (mis. OIDC tidak
+    // tersedia di runtime ini) -> perlakukan sama seperti belum aktif,
+    // supaya klien jatuh ke mode statis dan admin dapat info yang jelas.
+    const noCredentials = /No blob credentials found/i.test(message);
+    return sendJson(res, noCredentials ? 501 : 502, {
+      dynamic: !noCredentials,
+      configured: !noCredentials,
+      checks: credentialStatus(),
+      message,
     });
   }
 }

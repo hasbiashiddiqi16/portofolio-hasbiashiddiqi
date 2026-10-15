@@ -27,8 +27,9 @@ pengunjung ikut ter-update (maks. ~30 detik) tanpa deploy ulang.
 ### Aktivasi (satu kali, di dashboard Vercel)
 
 1. Buka project di Vercel → **Storage** → **Create** → **Blob** →
-   hubungkan ke project ini. Vercel otomatis menambahkan env
-   `BLOB_READ_WRITE_TOKEN`.
+   hubungkan ke project ini **untuk environment Production**. Vercel
+   otomatis menambahkan kredensial Blob (`BLOB_READ_WRITE_TOKEN` atau
+   `BLOB_STORE_ID` untuk auth OIDC — keduanya didukung).
 2. **Settings → Environment Variables**, tambahkan:
    `CMS_PASSWORD` = password login dashboard
    (samakan persis; default awal `admin123` — ganti juga password
@@ -40,6 +41,22 @@ pengunjung ikut ter-update (maks. ~30 detik) tanpa deploy ulang.
 
 Jika langkah di atas belum dilakukan, situs tetap berfungsi seperti
 semula (mode statis + draft lokal) — tidak ada yang rusak.
+
+### Troubleshooting: status tetap "belum aktif"
+
+Buka `https://<domain-kamu>/api/content` di browser. Respons
+`"configured": false` disertai field `checks` yang menunjukkan
+kredensial apa saja yang terbaca server:
+
+- `hasReadWriteToken: false` **dan** `hasBlobStoreId: false` → Blob belum
+  terhubung ke project/environment Production ini (penyebab tersering:
+  Blob terhubung hanya untuk Preview, terhubung ke project lain, atau
+  deployment Production belum di-redeploy setelah Blob dihubungkan).
+- `hasCmsPassword: false` → env `CMS_PASSWORD` belum ada untuk
+  Production; penerbitan dari dashboard akan ditolak server.
+- Setelah memperbaiki, **redeploy Production** (Deployments → `⋯` →
+  Redeploy pada deployment Production, bukan Preview) dan muat ulang
+  halaman ini sampai membalas `"dynamic": true`.
 
 ### Catatan
 
